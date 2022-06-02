@@ -1,7 +1,5 @@
 import { fetch } from 'cross-fetch';
 
-import tokenlist from './../tokens/solana.tokenlist.json';
-
 export enum ENV {
   MainnetBeta = 101,
   Testnet = 102,
@@ -64,8 +62,8 @@ export class GitHubTokenListResolutionStrategy {
     'https://raw.githubusercontent.com/solana-labs/token-list/main/src/tokens/solana.tokenlist.json',
   ];
 
-  resolve = () => {
-    return queryJsonFiles(this.repositories);
+  resolve = (fallbackUrl: string) => {
+    return queryJsonFiles(this.repositories, fallbackUrl);
   };
 }
 
@@ -74,31 +72,31 @@ export class CDNTokenListResolutionStrategy {
     'https://cdn.jsdelivr.net/gh/solana-labs/token-list@latest/src/tokens/solana.tokenlist.json',
   ];
 
-  resolve = () => {
-    return queryJsonFiles(this.repositories);
+  resolve = (fallbackUrl: string) => {
+    return queryJsonFiles(this.repositories, fallbackUrl);
   };
 }
 
 export class SolanaTokenListResolutionStrategy {
   repositories = ['https://token-list.solana.com/solana.tokenlist.json'];
 
-  resolve = () => {
-    return queryJsonFiles(this.repositories);
+  resolve = (fallbackUrl: string) => {
+    return queryJsonFiles(this.repositories, fallbackUrl);
   };
 }
 
-const queryJsonFiles = async (files: string[]) => {
+const queryJsonFiles = async (files: string[], fallbackUrl: string) => {
   const responses: TokenList[] = (await Promise.all(
     files.map(async (repo) => {
       try {
         const response = await fetch(repo);
-        const json = (await response.json()) as TokenList;
-        return json;
+        return (await response.json()) as TokenList;
       } catch {
         console.info(
-          `@solana/token-registry: falling back to static repository.`
+          `@solana/token-registry: falling back to fallback url.`
         );
-        return tokenlist;
+        const response = await fetch(fallbackUrl);
+        return (await response.json()) as TokenList;
       }
     })
   )) as TokenList[];
@@ -116,8 +114,8 @@ export enum Strategy {
 }
 
 export class StaticTokenListResolutionStrategy {
-  resolve = () => {
-    return tokenlist.tokens || [];
+  resolve = (fallbackUrl: string) => {
+    return queryJsonFiles([fallbackUrl], fallbackUrl);
   };
 }
 
@@ -130,10 +128,11 @@ export class TokenListProvider {
   };
 
   resolve = async (
-    strategy: Strategy = Strategy.CDN
+    strategy: Strategy = Strategy.CDN,
+    fallbackUrl: string = "",
   ): Promise<TokenListContainer> => {
     return new TokenListContainer(
-      await TokenListProvider.strategies[strategy].resolve()
+      await TokenListProvider.strategies[strategy].resolve(fallbackUrl)
     );
   };
 }
